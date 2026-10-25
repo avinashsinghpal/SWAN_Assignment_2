@@ -414,9 +414,8 @@ export const LandingPage: React.FC = () => {
             </Link>
             <Link to="/login">
               <Button
-                variant="secondary"
+                variant="secondary-inverted"
                 size="lg"
-                className="text-white border-white/30 hover:bg-white/10"
               >
                 Sign in
               </Button>

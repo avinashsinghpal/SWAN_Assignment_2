@@ -71,6 +71,20 @@
   background-color: rgba(32, 32, 32, 0.04);
 }
 
+/* Secondary outline button on dark backgrounds */
+.btn-secondary-inverted {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.btn-secondary-inverted:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #FFFFFF;
+}
+
 /* Tertiary small button with arrow nudge */
 .btn-tertiary {
   height: 36px;
