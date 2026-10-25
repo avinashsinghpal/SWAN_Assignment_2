@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FFFFFF;
+  --surface: #FAFAFA;
+  --cardgrey: #E9E9E9;
+  --border: #E5E5E5;
+  --text-primary: #202020;
+  --text-navy: #111A4A;
+  --text-secondary: #666666;
+  --text-muted: #7C7F88;
+  --accent: #156D95;
+  --accent-dark: #00517F;
+  --accent-light: #9ED2FC;
+  --success: #16B364;
+  --warning: #D9A100;
+  --danger: #D92D20;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--text-primary);
+    font-family: 'Figtree', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Morphing pill button: rounded-full to rounded-2xl on hover */
+.btn-pill {
+  border-radius: 9999px;
+  padding: 13px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: border-radius 150ms cubic-bezier(0.455, 0.03, 0.515, 0.955),
+              background-color 150ms ease,
+              border-color 150ms ease,
+              transform 150ms ease;
+}
+
+.btn-pill:hover {
+  border-radius: 1rem; /* rounded-2xl */
+}
+
+/* Primary pill button */
+.btn-primary {
+  background-color: #156D95;
+  color: #FFFFFF;
+}
+
+.btn-primary:hover {
+  background-color: rgba(21, 109, 149, 0.92);
+}
+
+/* Secondary outline button */
+.btn-secondary {
+  background-color: transparent;
+  color: #202020;
+  border: 1px solid #202020;
+}
+
+.btn-secondary:hover {
+  background-color: rgba(32, 32, 32, 0.04);
+}
+
+/* Tertiary small button with arrow nudge */
+.btn-tertiary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 0 1px rgba(87, 90, 100, 0.12);
+  color: #202020;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 150ms ease;
+}
+
+.btn-tertiary:hover .btn-arrow {
+  transform: translateX(4px);
+}
+
+.btn-arrow {
+  transition: transform 150ms ease;
+}
+
+/* Blinking block cursor for typewriter eyebrow */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.blinking-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  background-color: #156D95;
+  margin-left: 4px;
+  animation: blink 1s infinite;
+  vertical-align: middle;
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E5E5E5;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7C7F88;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Workflow Pipeline Marquee (moving left to right) */
+@keyframes marquee-ltr {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+.animate-marquee-ltr {
+  display: flex;
+  width: max-content;
+  animation: marquee-ltr 28s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-ltr:hover {
+  animation-play-state: paused;
+}

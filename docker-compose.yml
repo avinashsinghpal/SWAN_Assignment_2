@@ -1,0 +1,38 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: tasklane-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: tasklane
+    volumes:
+      - mongo_data:/data/db
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tasklane-api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: mongodb://mongodb:27017/tasklane
+      JWT_ACCESS_SECRET: dev_jwt_access_secret_minimum_32_characters_long
+      JWT_REFRESH_SECRET: dev_jwt_refresh_secret_minimum_32_characters_long
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      CLIENT_URL: http://localhost:5173
+      ENABLE_REMINDERS: "false"
+      ALLOW_SEED: "true"
+      SEED_ADMIN_PASSWORD: AdminPass123!
+      SEED_USER_PASSWORD: UserPass123!
+    depends_on:
+      - mongodb
+
+volumes:
+  mongo_data:
