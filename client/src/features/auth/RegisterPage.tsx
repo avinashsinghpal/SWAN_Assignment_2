@@ -30,6 +30,7 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'user'>('user');
+  const [adminSecretKey, setAdminSecretKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,10 +53,22 @@ export const RegisterPage: React.FC = () => {
       return;
     }
 
+    if (role === 'admin' && !adminSecretKey.trim()) {
+      setError('Admin secret key is required to create an administrator account');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await register({ name, email, password, confirmPassword, role });
+      await register({
+        name,
+        email,
+        password,
+        confirmPassword,
+        role,
+        adminSecretKey: role === 'admin' ? adminSecretKey.trim() : undefined,
+      });
       navigate('/app/dashboard', { replace: true });
     } catch (err: any) {
       const message = err.response?.data?.error?.message || 'Registration failed. Please check your details.';
@@ -215,6 +228,27 @@ export const RegisterPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Admin Secret Key Input (Only visible when Admin role is selected) */}
+            {role === 'admin' && (
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2 transition-all">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <ShieldCheck className="w-4 h-4 stroke-[1.5]" />
+                  <span>Admin Verification Required</span>
+                </div>
+                <Input
+                  label="Admin Secret Key"
+                  type="password"
+                  required
+                  value={adminSecretKey}
+                  onChange={(e) => setAdminSecretKey(e.target.value)}
+                  placeholder="Enter organization admin key"
+                />
+                <p className="text-[11px] text-text-muted">
+                  A secret key is required to register with administrator privileges.
+                </p>
+              </div>
+            )}
 
             <Button
               type="submit"
