@@ -1,7 +1,12 @@
 export const PRODUCT_NAME = 'Tasklane';
 export const PRODUCT_TAGLINE = 'Calm task management for focused teams';
 
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api/v1';
+const rawApiUrl = ((import.meta as any).env?.VITE_API_URL as string | undefined)?.trim();
+export const API_BASE_URL = rawApiUrl
+  ? rawApiUrl.endsWith('/api/v1')
+    ? rawApiUrl
+    : `${rawApiUrl.replace(/\/+$/, '')}/api/v1`
+  : '/api/v1';
 
 export const STATUS_CONFIG = {
   todo: {
