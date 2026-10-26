@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
   closestCorners,
+  pointerWithin,
+  CollisionDetection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
@@ -52,7 +55,7 @@ const KanbanCard: React.FC<{
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.35 : 1,
   };
 
   const relativeDue = getRelativeDueDateText(task.dueDate);
@@ -78,12 +81,16 @@ const KanbanCard: React.FC<{
           </span>
         </div>
 
-        {/* Mobile / Fallback Status dropdown */}
-        <div onClick={(e) => e.stopPropagation()}>
+        {/* Quick Status Dropdown (Accessible on all viewports, stops drag initiation) */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <select
             value={task.status}
             onChange={(e) => onStatusChange(e.target.value)}
-            className="text-[11px] font-mono px-2 py-0.5 rounded border border-border bg-surface text-text-secondary outline-none md:hidden cursor-pointer"
+            className="text-[11px] font-mono px-2 py-0.5 rounded border border-border bg-surface text-text-secondary outline-none cursor-pointer hover:border-primary/50 transition-colors"
+            title="Change status"
           >
             <option value="todo">To Do</option>
             <option value="in_progress">In Prog</option>
@@ -149,6 +156,89 @@ const DragOverlayCard: React.FC<{ task: any }> = ({ task }) => {
   );
 };
 
+// Droppable Kanban Column component
+const KanbanColumn: React.FC<{
+  column: { id: string; label: string; color: string };
+  columnTasks: any[];
+  onQuickAdd: (status: any) => void;
+  onCardClick: (taskId: string) => void;
+  onStatusChange: (taskId: string, newStatus: string) => void;
+}> = ({ column, columnTasks, onQuickAdd, onCardClick, onStatusChange }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: {
+      type: 'Column',
+      columnId: column.id,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      id={column.id}
+      className={`rounded-2xl border transition-colors p-4 flex flex-col min-w-full sm:min-w-[300px] md:min-w-0 snap-center ${
+        isOver ? 'border-primary/50 bg-primary/[0.02]' : 'border-border bg-surface'
+      }`}
+    >
+      {/* Column Header */}
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: column.color }}
+          />
+          <span className="font-mono text-xs uppercase tracking-wider font-semibold text-text-primary">
+            {column.label}
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-white border border-border font-mono text-[11px] text-text-muted">
+            {columnTasks.length}
+          </span>
+        </div>
+
+        <button
+          onClick={() => onQuickAdd(column.id as any)}
+          className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-white transition-colors cursor-pointer"
+          title={`Add task to ${column.label}`}
+        >
+          <Plus className="w-4 h-4 stroke-[1.5]" />
+        </button>
+      </div>
+
+      {/* Column Cards Drop Area */}
+      <SortableContext
+        id={column.id}
+        items={columnTasks.map((t) => t._id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="flex-1 flex flex-col space-y-3 min-h-[220px]">
+          {columnTasks.map((task) => (
+            <KanbanCard
+              key={task._id}
+              task={task}
+              onClick={() => onCardClick(task._id)}
+              onStatusChange={(newStatus) =>
+                onStatusChange(task._id, newStatus)
+              }
+            />
+          ))}
+
+          {columnTasks.length === 0 && (
+            <div
+              className={`flex-1 min-h-[160px] flex items-center justify-center border border-dashed rounded-xl p-6 text-center font-mono text-xs transition-colors ${
+                isOver
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-border/80 text-text-muted'
+              }`}
+            >
+              Drop tasks here
+            </div>
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+};
+
 export const BoardPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') || '';
@@ -157,6 +247,7 @@ export const BoardPage: React.FC = () => {
   const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<any | null>(null);
+  const originalStatusRef = useRef<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -199,14 +290,47 @@ export const BoardPage: React.FC = () => {
   ];
 
   const getColumnTasks = (status: string) => {
-    return tasks.filter((t) => t.status === status);
+    return tasks
+      .filter((t) => t.status === status)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
   };
+
+  const findContainer = useCallback(
+    (id: string | null) => {
+      if (!id) return null;
+      if (columns.some((c) => c.id === id)) {
+        return id;
+      }
+      const task = tasks.find((t) => t._id === id);
+      return task ? task.status : null;
+    },
+    [tasks]
+  );
+
+  // Custom collision detection: prioritize items within pointer collisions, otherwise detect column
+  const collisionDetectionStrategy: CollisionDetection = useCallback(
+    (args) => {
+      const pointerCollisions = pointerWithin(args);
+      if (pointerCollisions.length > 0) {
+        const itemCollision = pointerCollisions.find((c) =>
+          tasks.some((t) => t._id === c.id)
+        );
+        if (itemCollision) {
+          return [itemCollision];
+        }
+        return pointerCollisions;
+      }
+      return closestCorners(args);
+    },
+    [tasks]
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t._id === active.id);
     if (task) {
       setActiveTask(task);
+      originalStatusRef.current = task.status;
     }
   };
 
@@ -214,68 +338,86 @@ export const BoardPage: React.FC = () => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const activeId = String(active.id);
+    const overId = String(over.id);
 
-    const activeTaskItem = tasks.find((t) => t._id === activeId);
-    if (!activeTaskItem) return;
+    const activeContainer = findContainer(activeId);
+    const overContainer = findContainer(overId);
 
-    // Is hovering over a column container directly?
-    const isOverColumn = columns.some((c) => c.id === overId);
-    if (isOverColumn && activeTaskItem.status !== overId) {
-      setTasks((prev) =>
-        prev.map((t) => (t._id === activeId ? { ...t, status: overId } : t))
-      );
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
       return;
     }
 
-    // Is hovering over another task in another column?
-    const overTaskItem = tasks.find((t) => t._id === overId);
-    if (overTaskItem && activeTaskItem.status !== overTaskItem.status) {
-      setTasks((prev) =>
-        prev.map((t) => (t._id === activeId ? { ...t, status: overTaskItem.status } : t))
-      );
-    }
+    // Optimistically move task across columns during hover
+    setTasks((prev) =>
+      prev.map((t) => (t._id === activeId ? { ...t, status: overContainer } : t))
+    );
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const initialStatus = originalStatusRef.current;
     setActiveTask(null);
+    originalStatusRef.current = null;
 
-    if (!over) return;
+    if (!over) {
+      // Revert if dropped outside
+      if (initialStatus) {
+        setTasks((prev) =>
+          prev.map((t) => (t._id === active.id ? { ...t, status: initialStatus } : t))
+        );
+      }
+      return;
+    }
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const activeContainer = findContainer(activeId);
+    const overContainer = findContainer(overId);
+
+    const targetStatus = overContainer || activeContainer;
+    if (!targetStatus) return;
 
     const activeTaskItem = tasks.find((t) => t._id === activeId);
     if (!activeTaskItem) return;
 
-    // Target status
-    let targetStatus = activeTaskItem.status;
-    const isOverColumn = columns.some((c) => c.id === overId);
-    if (isOverColumn) {
-      targetStatus = overId;
+    // Calculate order within target column adhering to ADR #3
+    const targetColumnTasks = tasks
+      .filter((t) => t.status === targetStatus && t._id !== activeId)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    let newOrder = 1000;
+    if (targetColumnTasks.length === 0) {
+      newOrder = 1000;
+    } else if (overId === targetStatus) {
+      // Dropped directly on column drop area -> append at the bottom
+      const lastOrder = targetColumnTasks[targetColumnTasks.length - 1].order || 1000;
+      newOrder = lastOrder + 1000;
     } else {
-      const overTaskItem = tasks.find((t) => t._id === overId);
-      if (overTaskItem) {
-        targetStatus = overTaskItem.status;
+      const overIndex = targetColumnTasks.findIndex((t) => t._id === overId);
+      if (overIndex === -1) {
+        const lastOrder = targetColumnTasks[targetColumnTasks.length - 1].order || 1000;
+        newOrder = lastOrder + 1000;
+      } else if (overIndex === 0) {
+        const firstOrder = targetColumnTasks[0].order || 1000;
+        newOrder = firstOrder > 1000 ? firstOrder - 1000 : Math.max(1, firstOrder / 2);
+      } else {
+        const prevOrder = targetColumnTasks[overIndex - 1].order || 0;
+        const currentOrder = targetColumnTasks[overIndex].order || prevOrder + 1000;
+        newOrder = (prevOrder + currentOrder) / 2;
       }
     }
 
-    // Calculate order within target column
-    const columnTasks = tasks.filter((t) => t.status === targetStatus && t._id !== activeId);
-    let newOrder = 1000;
-    if (columnTasks.length > 0) {
-      const highestOrder = Math.max(...columnTasks.map((t) => t.order || 0));
-      newOrder = highestOrder + 1000;
-    }
-
-    // Optimistically update
     const previousTasks = [...tasks];
+
+    // Optimistically update status and order
     setTasks((prev) =>
-      prev.map((t) =>
-        t._id === activeId ? { ...t, status: targetStatus, order: newOrder } : t
-      )
+      prev
+        .map((t) =>
+          t._id === activeId ? { ...t, status: targetStatus, order: newOrder } : t
+        )
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
     );
 
     try {
@@ -285,8 +427,13 @@ export const BoardPage: React.FC = () => {
       });
       window.dispatchEvent(new Event('task-data-updated'));
     } catch (err: any) {
-      // Rollback on failure
-      setTasks(previousTasks);
+      if (initialStatus) {
+        setTasks((prev) =>
+          prev.map((t) => (t._id === activeId ? { ...t, status: initialStatus } : t))
+        );
+      } else {
+        setTasks(previousTasks);
+      }
       toast.error(err.response?.data?.error?.message || 'Failed to update task order');
     }
   };
@@ -358,7 +505,7 @@ export const BoardPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Mobile Column View Tabs (only visible on mobile) */}
+      {/* Mobile Column View Tabs */}
       <div className="flex md:hidden p-1 bg-surface border border-border rounded-xl gap-1">
         <button
           onClick={() => setMobileActiveColumn('all')}
@@ -388,7 +535,7 @@ export const BoardPage: React.FC = () => {
         })}
       </div>
 
-      {/* Kanban Columns Container with horizontal scroll snap on mobile */}
+      {/* Kanban Columns Container */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Skeleton className="h-96 rounded-2xl" />
@@ -398,7 +545,7 @@ export const BoardPage: React.FC = () => {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetectionStrategy}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -409,60 +556,16 @@ export const BoardPage: React.FC = () => {
                 (col) =>
                   mobileActiveColumn === 'all' || mobileActiveColumn === col.id
               )
-              .map((column) => {
-                const columnTasks = getColumnTasks(column.id);
-                return (
-                  <div
-                    key={column.id}
-                    id={column.id}
-                    className="rounded-2xl border border-border bg-surface p-4 flex flex-col min-w-full sm:min-w-[300px] md:min-w-0 snap-center"
-                  >
-                  {/* Column Header */}
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-border">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: column.color }}
-                      />
-                      <span className="font-mono text-xs uppercase tracking-wider font-semibold text-text-primary">
-                        {column.label}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full bg-white border border-border font-mono text-[11px] text-text-muted">
-                        {columnTasks.length}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => handleQuickAdd(column.id as any)}
-                      className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-white transition-colors cursor-pointer"
-                      title={`Add task to ${column.label}`}
-                    >
-                      <Plus className="w-4 h-4 stroke-[1.5]" />
-                    </button>
-                  </div>
-
-                  {/* Column Cards Drop Area */}
-                  <SortableContext
-                    id={column.id}
-                    items={columnTasks.map((t) => t._id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="flex-1 space-y-3 min-h-[160px]">
-                      {columnTasks.map((task) => (
-                        <KanbanCard
-                          key={task._id}
-                          task={task}
-                          onClick={() => handleCardClick(task._id)}
-                          onStatusChange={(newStatus) =>
-                            handleInlineStatusChange(task._id, newStatus)
-                          }
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </div>
-              );
-            })}
+              .map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  columnTasks={getColumnTasks(column.id)}
+                  onQuickAdd={handleQuickAdd}
+                  onCardClick={handleCardClick}
+                  onStatusChange={handleInlineStatusChange}
+                />
+              ))}
           </div>
 
           <DragOverlay>
